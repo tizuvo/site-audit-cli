@@ -8,7 +8,7 @@
     ".": "./src/audit.mjs"
   },
   "bin": {
-    "tizuvo-audit": "./bin/cli.mjs"
+    "tizuvo-audit": "bin/cli.mjs"
   },
   "files": [
     "bin",
@@ -37,7 +37,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/tizuvo/site-audit-cli.git"
+    "url": "git+https://github.com/tizuvo/site-audit-cli.git"
   },
   "homepage": "https://tizuvo.com/audit",
   "bugs": {
