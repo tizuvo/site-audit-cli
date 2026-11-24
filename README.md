@@ -27,10 +27,10 @@
 ## Why `@tizuvo/audit`?
 
 - **Zero dependencies** — Built exclusively on Node.js 20+ built-ins (`fetch`, `node:tls`, `node:http`, `node:https`, `node:util`, `node:perf_hooks`). Fast cold start, zero supply-chain bloat.
-- **3 pillars, 18 high-signal checks** — Mirrors the exact scoring engine and JSON schema of [tizuvo.com/audit](https://tizuvo.com/audit):
-  - **Performance & Transport (30%)**: TTFB, redirect hops, compression, HTML size, caching headers.
-  - **Security & TLS (40%)**: TLS protocol & certificate expiry, HSTS, CSP, `X-Content-Type-Options`, framing protection, `Referrer-Policy` / `Permissions-Policy`, `security.txt`.
-  - **Technical SEO (30%)**: `<title>`, meta description, `<h1>` / `lang` / viewport, canonical & indexability, `robots.txt` & `sitemap.xml`, JSON-LD & Open Graph.
+- **3 pillars, 20 high-signal checks (6 + 7 + 7)** — Mirrors the exact scoring model and JSON schema of [tizuvo.com/audit](https://tizuvo.com/audit):
+  - **Performance & Transport (30% — 6 checks)**: HTTP protocol (HTTP/2 / HTTP/3 via ALPN), TTFB, redirect hops, compression, HTML size, caching headers.
+  - **Security & TLS (40% — 7 checks)**: TLS protocol & certificate expiry, HSTS, CSP, `X-Content-Type-Options`, framing protection, `Referrer-Policy` / `Permissions-Policy`, server fingerprint hygiene (`Server` / `X-Powered-By`).
+  - **Technical SEO (30% — 7 checks)**: `<title>`, meta description, `<h1>` / `lang` / viewport, canonical & indexability, `robots.txt` & `sitemap.xml`, Open Graph social tags, valid JSON-LD structured data.
 - **CI-ready** — Built-in `--min-score`, `--fail-on`, and `--json` flags with clean exit codes (`0`, `1`, `2`).
 - **Resilient** — Never crashes on unreachable hosts, expired/self-signed certs, redirect loops, missing headers, or malformed HTML.
 
@@ -65,36 +65,40 @@ tizuvo-audit https://yourcompany.com
 
 ```text
   TIZUVO SITE AUDIT
-  https://tizuvo.com/  ·  HTTP 200  ·  385ms
+  https://tizuvo.com/  ·  HTTP 200  ·  318ms
 
-  OVERALL  98/100 (A+)   17 pass · 1 warn · 0 fail
+  OVERALL  100/100 (A+)   20 pass · 0 warn · 0 fail
 
-  Performance & Transport                                      100/100
-  ────────────────────────────────────────────────────────────────────
-  ✓  Time to First Byte          142ms (target <400ms)
-  ✓  Redirect Chain              0 hops
-  ✓  Compression                 br (Brotli)
-  ✓  HTML Payload Size           24.6 KB (target <100 KB)
-  ✓  Cache Headers               Cache-Control, ETag
+  Performance & Transport                                            100/100
+  ──────────────────────────────────────────────────────────────────────────
+  ✓  HTTP Protocol                 HTTP/2 enabled
+  ✓  Time to First Byte            132ms (target <400ms)
+  ✓  Redirect Chain                0 hops
+  ✓  Compression                   gzip
+  ✓  HTML Payload Size             38.8 KB (target <100 KB)
+  ✓  Cache Headers                 Cache-Control and ETag present
 
-  Security & TLS                                               100/100
-  ────────────────────────────────────────────────────────────────────
-  ✓  HTTPS & TLS                 TLSv1.3 · cert valid 82 days
-  ✓  HSTS                        max-age=63072000; includeSubDomains; preload
-  ✓  Content-Security-Policy     Present (no unsafe-inline/unsafe-eval)
-  ✓  X-Content-Type-Options      nosniff
-  ✓  Clickjacking Protection     frame-ancestors + X-Frame-Options
-  ✓  Referrer & Permissions      Both Referrer-Policy and Permissions-Policy set
-  ✓  security.txt                Found at /.well-known/security.txt with Contact
+  Security & TLS                                                     100/100
+  ──────────────────────────────────────────────────────────────────────────
+  ✓  HTTPS & TLS                   TLSv1.3 · cert valid 84 days
+  ✓  HSTS                          max-age=63072000; includeSubDomains; preload
+  ✓  Content-Security-Policy       Present without unsafe-inline or unsafe-eval
+  ✓  X-Content-Type-Options        nosniff
+  ✓  Clickjacking Protection       CSP frame-ancestors + X-Frame-Options: DENY
+  ✓  Referrer & Permissions        Referrer-Policy and Permissions-Policy set
+  ✓  Server Fingerprint Hygiene    No software version exposed
 
-  Technical SEO                                                 94/100
-  ────────────────────────────────────────────────────────────────────
-  ✓  Title Tag                   48 chars (target 20–65)
-  ✓  Meta Description            134 chars (target 70–165)
-  ✓  H1, Lang & Viewport         1 H1 · lang="en" · viewport set
-  ✓  Canonical & Indexability    Canonical set · indexable
-  ✓  robots.txt & sitemap.xml    Both reachable (HTTP 200)
-  !  Structured Data & Social    Open Graph set · JSON-LD missing
+  Technical SEO                                                      100/100
+  ──────────────────────────────────────────────────────────────────────────
+  ✓  Title Tag                     65 chars (target 20–65)
+  ✓  Meta Description              150 chars (target 70–165)
+  ✓  H1, Lang & Viewport           1 H1 · lang="en" · viewport set
+  ✓  Canonical & Indexability      Canonical set · indexable
+  ✓  robots.txt & sitemap.xml      Both reachable (HTTP 200)
+  ✓  Open Graph Social Tags        og:title and og:description present
+  ✓  Structured Data (JSON-LD)     1 valid JSON-LD block found
+
+  Full interactive report: https://tizuvo.com/audit
 ```
 
 ---
@@ -134,12 +138,12 @@ const report = await auditSite("https://tizuvo.com", {
 });
 
 console.log(report.overall_score, report.grade);
-// 98 'A+'
+// 100 'A+'
 ```
 
 ### JSON Output Schema
 
-`--json` and `auditSite()` return the exact schema used by [https://tizuvo.com/audit](https://tizuvo.com/audit):
+`--json` and `auditSite()` return the exact 20-check schema used by [https://tizuvo.com/audit](https://tizuvo.com/audit):
 
 ```json
 {
@@ -147,26 +151,26 @@ console.log(report.overall_score, report.grade);
   "host": "tizuvo.com",
   "audited_url": "https://tizuvo.com/",
   "status_code": 200,
-  "duration_ms": 385,
-  "overall_score": 98,
+  "duration_ms": 318,
+  "overall_score": 100,
   "grade": "A+",
   "counts": {
-    "pass": 17,
-    "warn": 1,
+    "pass": 20,
+    "warn": 0,
     "fail": 0
   },
   "categories": {
     "performance": 100,
     "security": 100,
-    "seo": 94
+    "seo": 100
   },
   "checks": [
     {
-      "id": "ttfb",
+      "id": "http_protocol",
       "category": "performance",
       "status": "pass",
-      "label": "Time to First Byte",
-      "detail": "142ms (target <400ms)"
+      "label": "HTTP Protocol",
+      "detail": "HTTP/2 enabled"
     }
   ]
 }
@@ -177,7 +181,7 @@ console.log(report.overall_score, report.grade);
 ## Scoring Model
 
 - **Per-check points**: `pass` = 100, `warn` = 55, `fail` = 0.
-- **Category score**: Rounded arithmetic mean of checks in that category.
+- **Category score**: Rounded arithmetic mean of checks in that category (6 performance, 7 security, 7 SEO).
 - **Overall score**: `Math.round(performance * 0.30 + security * 0.40 + seo * 0.30)`.
 - **Letter grade**: `A+` (`>=95`), `A` (`>=90`), `B` (`>=80`), `C` (`>=70`), `D` (`>=60`), `F` (`<60`).
 

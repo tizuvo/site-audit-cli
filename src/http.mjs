@@ -7,7 +7,7 @@ import { performance } from "node:perf_hooks";
 
 export const DEFAULT_TIMEOUT_MS = 8000;
 export const MAX_REDIRECTS = 5;
-export const USER_AGENT = "@tizuvo/audit/1.0 (+https://tizuvo.com/audit)";
+export const USER_AGENT = "@tizuvo/audit/1.1 (+https://tizuvo.com/audit)";
 
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 const TLS_CERT_ERROR_CODES = new Set([
@@ -363,6 +363,7 @@ export function inspectTls(urlString, { timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
     return Promise.resolve({
       isHttps: false,
       protocol: null,
+      alpnProtocol: null,
       authorized: false,
       authorizationError: null,
       cert: null,
@@ -376,6 +377,7 @@ export function inspectTls(urlString, { timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
     return Promise.resolve({
       isHttps: false,
       protocol: null,
+      alpnProtocol: null,
       authorized: false,
       authorizationError: null,
       cert: null,
@@ -400,6 +402,7 @@ export function inspectTls(urlString, { timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
       host,
       port,
       servername: net.isIP(host) ? undefined : host,
+      ALPNProtocols: ["h2", "http/1.1"],
       rejectUnauthorized: false,
     });
 
@@ -408,6 +411,7 @@ export function inspectTls(urlString, { timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
       finish({
         isHttps: true,
         protocol: null,
+        alpnProtocol: null,
         authorized: false,
         authorizationError: null,
         cert: null,
@@ -419,6 +423,10 @@ export function inspectTls(urlString, { timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
 
     socket.once("secureConnect", () => {
       const protocol = socket.getProtocol() || null;
+      const alpnProtocol =
+        typeof socket.alpnProtocol === "string" && socket.alpnProtocol
+          ? socket.alpnProtocol
+          : null;
       const authorized = Boolean(socket.authorized);
       const authorizationError = socket.authorizationError || null;
       const cert = socket.getPeerCertificate(false) || null;
@@ -439,6 +447,7 @@ export function inspectTls(urlString, { timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
       finish({
         isHttps: true,
         protocol,
+        alpnProtocol,
         authorized,
         authorizationError,
         cert: cert && Object.keys(cert).length > 0 ? cert : null,
@@ -453,6 +462,7 @@ export function inspectTls(urlString, { timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
       finish({
         isHttps: true,
         protocol: null,
+        alpnProtocol: null,
         authorized: false,
         authorizationError: null,
         cert: null,

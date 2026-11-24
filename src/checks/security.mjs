@@ -25,7 +25,7 @@ function parseCsp(cspHeader) {
 /**
  * Run all 7 Security & TLS checks.
  */
-export function runSecurityChecks(doc, tlsInfo, securityTxt) {
+export function runSecurityChecks(doc, tlsInfo) {
   return [
     checkHttpsTls(tlsInfo),
     checkHsts(doc, tlsInfo),
@@ -33,7 +33,7 @@ export function runSecurityChecks(doc, tlsInfo, securityTxt) {
     checkXcto(doc),
     checkFraming(doc),
     checkReferrerPermissions(doc),
-    checkSecurityTxt(securityTxt),
+    checkServerHygiene(doc),
   ];
 }
 
@@ -350,32 +350,33 @@ function checkReferrerPermissions(doc) {
   };
 }
 
-function checkSecurityTxt(securityTxt) {
-  if (securityTxt?.ok && /^\s*contact\s*:\s*\S+/im.test(securityTxt.text || "")) {
-    return {
-      id: "security_txt",
-      category: "security",
-      status: "pass",
-      label: "security.txt",
-      detail: "Found at /.well-known/security.txt with Contact",
-    };
+function checkServerHygiene(doc) {
+  const server = doc.headers?.get?.("server")?.trim() || "";
+  const poweredBy = doc.headers?.get?.("x-powered-by")?.trim() || "";
+
+  const exposed = [];
+  if (poweredBy) {
+    exposed.push(`X-Powered-By: ${poweredBy}`);
+  }
+  if (server && /\/\d/.test(server)) {
+    exposed.push(`Server: ${server}`);
   }
 
-  if (securityTxt?.ok) {
+  if (exposed.length === 0) {
     return {
-      id: "security_txt",
+      id: "server_hygiene",
       category: "security",
-      status: "warn",
-      label: "security.txt",
-      detail: "Found /.well-known/security.txt but missing Contact field",
+      status: "pass",
+      label: "Server Fingerprint Hygiene",
+      detail: "No software version exposed",
     };
   }
 
   return {
-    id: "security_txt",
+    id: "server_hygiene",
     category: "security",
     status: "warn",
-    label: "security.txt",
-    detail: "Not found at /.well-known/security.txt",
+    label: "Server Fingerprint Hygiene",
+    detail: `Exposes ${exposed.join(" · ")}`,
   };
 }

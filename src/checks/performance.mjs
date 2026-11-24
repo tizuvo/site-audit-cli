@@ -1,5 +1,5 @@
 /**
- * Pillar 1: Performance & Transport (5 checks)
+ * Pillar 1: Performance & Transport (6 checks)
  */
 
 const COMPRESSION_LABELS = {
@@ -9,16 +9,49 @@ const COMPRESSION_LABELS = {
 };
 
 /**
- * Run all 5 Performance & Transport checks.
+ * Run all 6 Performance & Transport checks.
  */
-export function runPerformanceChecks(doc) {
+export function runPerformanceChecks(doc, tlsInfo) {
   return [
+    checkHttpProtocol(tlsInfo),
     checkTtfb(doc),
     checkRedirects(doc),
     checkCompression(doc),
     checkHtmlSize(doc),
     checkCaching(doc),
   ];
+}
+
+function checkHttpProtocol(tlsInfo) {
+  const alpn = (tlsInfo?.alpnProtocol || "").toLowerCase();
+
+  if (alpn === "h3") {
+    return {
+      id: "http_protocol",
+      category: "performance",
+      status: "pass",
+      label: "HTTP Protocol",
+      detail: "HTTP/3 enabled",
+    };
+  }
+
+  if (alpn === "h2") {
+    return {
+      id: "http_protocol",
+      category: "performance",
+      status: "pass",
+      label: "HTTP Protocol",
+      detail: "HTTP/2 enabled",
+    };
+  }
+
+  return {
+    id: "http_protocol",
+    category: "performance",
+    status: "warn",
+    label: "HTTP Protocol",
+    detail: "HTTP/1.1 only — consider enabling HTTP/2",
+  };
 }
 
 function checkTtfb(doc) {

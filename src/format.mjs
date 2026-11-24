@@ -20,8 +20,8 @@ const PILLARS = [
   { key: "seo", title: "Technical SEO" },
 ];
 
-const WIDTH = 72;
-const LABEL_WIDTH = 26;
+const WIDTH = 74;
+const LABEL_WIDTH = 28;
 
 function paint(text, code, enabled) {
   return enabled ? `${code}${text}${ANSI.reset}` : text;

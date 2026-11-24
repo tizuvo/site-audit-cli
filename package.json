@@ -1,6 +1,6 @@
 {
   "name": "@tizuvo/audit",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Zero-dependency Node.js CLI that audits website Performance & Transport, Security & TLS, and Technical SEO in ~3 seconds.",
   "type": "module",
   "main": "./src/audit.mjs",

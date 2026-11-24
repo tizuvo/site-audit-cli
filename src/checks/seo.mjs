@@ -1,5 +1,5 @@
 /**
- * Pillar 3: Technical SEO (6 checks)
+ * Pillar 3: Technical SEO (7 checks)
  */
 
 /**
@@ -59,7 +59,7 @@ function findTags(html, tagName) {
 }
 
 /**
- * Run all 6 Technical SEO checks.
+ * Run all 7 Technical SEO checks.
  */
 export function runSeoChecks(doc, robotsTxt, sitemapXml) {
   const cleanHtml = stripComments(doc.html || "");
@@ -73,7 +73,8 @@ export function runSeoChecks(doc, robotsTxt, sitemapXml) {
     checkH1AndLang(cleanHtml, htmlTags, metaTags),
     checkCanonicalIndexable(doc, metaTags, linkTags),
     checkRobotsSitemap(robotsTxt, sitemapXml),
-    checkStructuredSocial(cleanHtml, metaTags),
+    checkOpenGraph(metaTags),
+    checkJsonLd(cleanHtml),
   ];
 }
 
@@ -274,64 +275,106 @@ function checkRobotsSitemap(robotsTxt, sitemapXml) {
   };
 }
 
-function checkStructuredSocial(html, metaTags) {
-  const ldJsonRe = /<script\b[^>]*type\s*=\s*(?:"application\/ld\+json"|'application\/ld\+json'|application\/ld\+json)[^>]*>([\s\S]*?)<\/script>/gi;
-  let hasJsonLd = false;
-  let match;
-  while ((match = ldJsonRe.exec(html)) !== null) {
-    if ((match[1] || "").trim().length > 0) {
-      hasJsonLd = true;
-      break;
-    }
-  }
-
+function checkOpenGraph(metaTags) {
   const hasOgTitle = metaTags.some(
     (m) =>
-      ((m.property || m.name || "").toLowerCase().trim() === "og:title") &&
+      (m.property || m.name || "").toLowerCase().trim() === "og:title" &&
       Boolean((m.content || "").trim())
   );
   const hasOgDesc = metaTags.some(
     (m) =>
-      ((m.property || m.name || "").toLowerCase().trim() === "og:description") &&
+      (m.property || m.name || "").toLowerCase().trim() === "og:description" &&
       Boolean((m.content || "").trim())
   );
-  const hasOpenGraph = hasOgTitle && hasOgDesc;
 
-  if (hasJsonLd && hasOpenGraph) {
+  if (hasOgTitle && hasOgDesc) {
     return {
-      id: "structured_social",
+      id: "open_graph",
       category: "seo",
       status: "pass",
-      label: "Structured Data & Social",
-      detail: "JSON-LD and Open Graph (og:title + og:description) present",
+      label: "Open Graph Social Tags",
+      detail: "og:title and og:description present",
     };
   }
 
-  if (hasJsonLd) {
+  if (hasOgTitle) {
     return {
-      id: "structured_social",
+      id: "open_graph",
       category: "seo",
       status: "warn",
-      label: "Structured Data & Social",
-      detail: "JSON-LD present · Open Graph incomplete or missing",
+      label: "Open Graph Social Tags",
+      detail: "og:title present · og:description missing",
     };
   }
 
-  if (hasOpenGraph) {
+  if (hasOgDesc) {
     return {
-      id: "structured_social",
+      id: "open_graph",
       category: "seo",
       status: "warn",
-      label: "Structured Data & Social",
-      detail: "Open Graph present · JSON-LD missing",
+      label: "Open Graph Social Tags",
+      detail: "og:description present · og:title missing",
     };
   }
 
   return {
-    id: "structured_social",
+    id: "open_graph",
     category: "seo",
     status: "warn",
-    label: "Structured Data & Social",
-    detail: "Missing both JSON-LD and Open Graph tags",
+    label: "Open Graph Social Tags",
+    detail: "Missing og:title and og:description",
+  };
+}
+
+function checkJsonLd(html) {
+  const ldJsonRe =
+    /<script\b[^>]*type\s*=\s*(?:"application\/ld\+json"|'application\/ld\+json'|application\/ld\+json)[^>]*>([\s\S]*?)<\/script>/gi;
+
+  let blockCount = 0;
+  let validCount = 0;
+  let match;
+  while ((match = ldJsonRe.exec(html)) !== null) {
+    blockCount += 1;
+    const raw = (match[1] || "").trim();
+    if (!raw) continue;
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object") {
+        validCount += 1;
+      }
+    } catch {
+      // Invalid JSON-LD block
+    }
+  }
+
+  if (validCount > 0) {
+    return {
+      id: "json_ld",
+      category: "seo",
+      status: "pass",
+      label: "Structured Data (JSON-LD)",
+      detail:
+        validCount === 1
+          ? "1 valid JSON-LD block found"
+          : `${validCount} valid JSON-LD blocks found`,
+    };
+  }
+
+  if (blockCount > 0) {
+    return {
+      id: "json_ld",
+      category: "seo",
+      status: "warn",
+      label: "Structured Data (JSON-LD)",
+      detail: "Found application/ld+json script but JSON is invalid",
+    };
+  }
+
+  return {
+    id: "json_ld",
+    category: "seo",
+    status: "warn",
+    label: "Structured Data (JSON-LD)",
+    detail: "Missing application/ld+json structured data",
   };
 }

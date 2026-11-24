@@ -101,16 +101,15 @@ export async function auditSite(inputUrl, options = {}) {
   const origin = finalParsed.origin;
 
   // Run TLS inspection and auxiliary endpoint fetches in parallel
-  const [tlsInfo, securityTxt, robotsTxt, sitemapXml] = await Promise.all([
+  const [tlsInfo, robotsTxt, sitemapXml] = await Promise.all([
     inspectTls(doc.finalUrl, { timeoutMs }),
-    fetchAuxiliary(origin, "/.well-known/security.txt", { timeoutMs }),
     fetchAuxiliary(origin, "/robots.txt", { timeoutMs }),
     fetchAuxiliary(origin, "/sitemap.xml", { timeoutMs }),
   ]);
 
   const checks = [
-    ...runPerformanceChecks(doc),
-    ...runSecurityChecks(doc, tlsInfo, securityTxt),
+    ...runPerformanceChecks(doc, tlsInfo),
+    ...runSecurityChecks(doc, tlsInfo),
     ...runSeoChecks(doc, robotsTxt, sitemapXml),
   ];
 

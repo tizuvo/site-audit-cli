@@ -15,6 +15,7 @@ import {
 } from "../src/audit.mjs";
 import { runPerformanceChecks } from "../src/checks/performance.mjs";
 import { runSecurityChecks } from "../src/checks/security.mjs";
+import { runSeoChecks } from "../src/checks/seo.mjs";
 import { formatTerminal } from "../src/format.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -60,15 +61,15 @@ const CLEAN_HTML = `<!doctype html>
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Tizuvo Studio — High-Velocity Web &amp; Security Engineering</title>
+  <title>Tizuvo Studio — High-Velocity Web &amp; Security Systems</title>
   <meta name="description" content="Tizuvo builds fast, secure, search-optimized web platforms with modern architecture and measurable performance across every release." />
   <link rel="canonical" href="https://example.com/" />
   <meta property="og:title" content="Tizuvo Studio" />
-  <meta property="og:description" content="High-velocity web engineering and security audits." />
+  <meta property="og:description" content="High-velocity web platforms and security audits." />
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"Organization","name":"Tizuvo"}</script>
 </head>
 <body>
-  <h1>Engineering fast, resilient websites</h1>
+  <h1>Building fast, resilient websites</h1>
   <p>Welcome to the mock test page.</p>
 </body>
 </html>`;
@@ -109,10 +110,10 @@ describe("URL normalization", () => {
 });
 
 describe("Scoring engine & grade calculator", () => {
-  it("computes exact weighted scores and grades", () => {
+  it("computes exact weighted scores and grades across 20 checks (6+7+7)", () => {
     const checks = [
-      // 5 performance: all pass => 100
-      ...Array.from({ length: 5 }, (_, i) => ({
+      // 6 performance: all pass => 100
+      ...Array.from({ length: 6 }, (_, i) => ({
         id: `p${i}`,
         category: "performance",
         status: "pass",
@@ -123,19 +124,19 @@ describe("Scoring engine & grade calculator", () => {
         category: "security",
         status: "pass",
       })),
-      // 6 seo: 5 pass (500) + 1 warn (55) = 555 / 6 = 92.5 => 93
-      ...Array.from({ length: 5 }, (_, i) => ({
+      // 7 seo: 6 pass (600) + 1 warn (55) = 655 / 7 = 93.57 => 94
+      ...Array.from({ length: 6 }, (_, i) => ({
         id: `o${i}`,
         category: "seo",
         status: "pass",
       })),
-      { id: "o5", category: "seo", status: "warn" },
+      { id: "o6", category: "seo", status: "warn" },
     ];
 
     const result = calculateScore(checks);
-    assert.deepEqual(result.counts, { pass: 17, warn: 1, fail: 0 });
-    assert.deepEqual(result.categories, { performance: 100, security: 100, seo: 93 });
-    // 100*0.3 + 100*0.4 + 93*0.3 = 30 + 40 + 27.9 = 97.9 => 98
+    assert.deepEqual(result.counts, { pass: 19, warn: 1, fail: 0 });
+    assert.deepEqual(result.categories, { performance: 100, security: 100, seo: 94 });
+    // 100*0.3 + 100*0.4 + 94*0.3 = 30 + 40 + 28.2 = 98.2 => 98
     assert.equal(result.overall_score, 98);
     assert.equal(result.grade, "A+");
   });
@@ -152,52 +153,110 @@ describe("Scoring engine & grade calculator", () => {
   });
 });
 
-describe("Unit checks: Performance & Security edge cases", () => {
-  it("evaluates TLS 1.3, TLS 1.2, expiring certs, and HSTS", () => {
-    const headers = new Headers({
+describe("Unit checks: Performance, Security & SEO (20-check matrix)", () => {
+  it("evaluates http_protocol (h2/h3 -> pass, http/1.1 -> warn)", () => {
+    const baseDoc = {
+      ttfbMs: 120,
+      redirectCount: 0,
+      redirectLoop: false,
+      headers: new Headers({ "content-encoding": "br", "cache-control": "max-age=60" }),
+      htmlBytes: 12 * 1024,
+    };
+
+    const h2Checks = runPerformanceChecks(baseDoc, { alpnProtocol: "h2" });
+    assert.equal(h2Checks.length, 6);
+    assert.equal(h2Checks[0].id, "http_protocol");
+    assert.equal(h2Checks[0].status, "pass");
+    assert.match(h2Checks[0].detail, /HTTP\/2/);
+
+    const h3Checks = runPerformanceChecks(baseDoc, { alpnProtocol: "h3" });
+    assert.equal(h3Checks[0].status, "pass");
+    assert.match(h3Checks[0].detail, /HTTP\/3/);
+
+    const h1Checks = runPerformanceChecks(baseDoc, { alpnProtocol: "http/1.1" });
+    assert.equal(h1Checks[0].status, "warn");
+    assert.match(h1Checks[0].detail, /HTTP\/1\.1/);
+
+    const plainChecks = runPerformanceChecks(baseDoc, { alpnProtocol: null });
+    assert.equal(plainChecks[0].status, "warn");
+  });
+
+  it("evaluates TLS 1.3, TLS 1.2, expiring certs, HSTS, and server_hygiene", () => {
+    const cleanHeaders = new Headers({
+      server: "nginx",
       "strict-transport-security": "max-age=63072000; includeSubDomains; preload",
       "content-security-policy": "default-src 'self'; frame-ancestors 'none'",
       "x-content-type-options": "nosniff",
       "referrer-policy": "strict-origin-when-cross-origin",
       "permissions-policy": "camera=(), microphone=()",
     });
-    const doc = { headers };
-    const secTxt = { ok: true, status: 200, text: "Contact: mailto:sec@example.com\n" };
+    const doc = { headers: cleanHeaders };
 
-    // TLS 1.3 + 80 days => pass
-    const passChecks = runSecurityChecks(
-      doc,
-      { isHttps: true, protocol: "TLSv1.3", authorized: true, daysRemaining: 80, expired: false },
-      secTxt
-    );
+    // TLS 1.3 + 80 days + clean Server: nginx => all 7 pass
+    const passChecks = runSecurityChecks(doc, {
+      isHttps: true,
+      protocol: "TLSv1.3",
+      authorized: true,
+      daysRemaining: 80,
+      expired: false,
+    });
+    assert.equal(passChecks.length, 7);
     assert.equal(passChecks.find((c) => c.id === "https_tls").status, "pass");
     assert.equal(passChecks.find((c) => c.id === "hsts").status, "pass");
     assert.equal(passChecks.find((c) => c.id === "csp").status, "pass");
     assert.equal(passChecks.find((c) => c.id === "framing").status, "pass");
-    assert.equal(passChecks.find((c) => c.id === "security_txt").status, "pass");
+    assert.equal(passChecks.find((c) => c.id === "server_hygiene").status, "pass");
+    assert.equal(
+      passChecks.find((c) => c.id === "server_hygiene").detail,
+      "No software version exposed"
+    );
+
+    // Server: nginx/1.24.0 => warn
+    const versionedServer = runSecurityChecks(
+      { headers: new Headers({ server: "nginx/1.24.0" }) },
+      { isHttps: true, protocol: "TLSv1.3", authorized: true, daysRemaining: 80, expired: false }
+    );
+    const serverWarn = versionedServer.find((c) => c.id === "server_hygiene");
+    assert.equal(serverWarn.status, "warn");
+    assert.match(serverWarn.detail, /nginx\/1\.24\.0/);
+
+    // X-Powered-By: Express => warn
+    const poweredByServer = runSecurityChecks(
+      { headers: new Headers({ server: "cloudflare", "x-powered-by": "Express" }) },
+      { isHttps: true, protocol: "TLSv1.3", authorized: true, daysRemaining: 80, expired: false }
+    );
+    const poweredWarn = poweredByServer.find((c) => c.id === "server_hygiene");
+    assert.equal(poweredWarn.status, "warn");
+    assert.match(poweredWarn.detail, /Express/);
 
     // TLS 1.2 => warn
-    const tls12 = runSecurityChecks(
-      doc,
-      { isHttps: true, protocol: "TLSv1.2", authorized: true, daysRemaining: 80, expired: false },
-      secTxt
-    );
+    const tls12 = runSecurityChecks(doc, {
+      isHttps: true,
+      protocol: "TLSv1.2",
+      authorized: true,
+      daysRemaining: 80,
+      expired: false,
+    });
     assert.equal(tls12.find((c) => c.id === "https_tls").status, "warn");
 
     // Cert expiring in 20 days => warn
-    const expiringSoon = runSecurityChecks(
-      doc,
-      { isHttps: true, protocol: "TLSv1.3", authorized: true, daysRemaining: 20, expired: false },
-      secTxt
-    );
+    const expiringSoon = runSecurityChecks(doc, {
+      isHttps: true,
+      protocol: "TLSv1.3",
+      authorized: true,
+      daysRemaining: 20,
+      expired: false,
+    });
     assert.equal(expiringSoon.find((c) => c.id === "https_tls").status, "warn");
 
     // Cert expiring in 5 days => fail
-    const criticalCert = runSecurityChecks(
-      doc,
-      { isHttps: true, protocol: "TLSv1.3", authorized: true, daysRemaining: 5, expired: false },
-      secTxt
-    );
+    const criticalCert = runSecurityChecks(doc, {
+      isHttps: true,
+      protocol: "TLSv1.3",
+      authorized: true,
+      daysRemaining: 5,
+      expired: false,
+    });
     assert.equal(criticalCert.find((c) => c.id === "https_tls").status, "fail");
   });
 
@@ -209,12 +268,48 @@ describe("Unit checks: Performance & Security edge cases", () => {
       headers: new Headers(),
       htmlBytes: 15 * 1024,
     };
-    const checks = runPerformanceChecks(slowDoc);
+    const checks = runPerformanceChecks(slowDoc, { alpnProtocol: "http/1.1" });
+    assert.equal(checks.find((c) => c.id === "http_protocol").status, "warn");
     assert.equal(checks.find((c) => c.id === "ttfb").status, "fail");
     assert.equal(checks.find((c) => c.id === "redirects").status, "warn");
     assert.equal(checks.find((c) => c.id === "compression").status, "warn");
     assert.equal(checks.find((c) => c.id === "html_size").status, "pass");
     assert.equal(checks.find((c) => c.id === "caching").status, "warn");
+  });
+
+  it("evaluates separate open_graph and json_ld checks including malformed JSON-LD", () => {
+    const robotsOk = { ok: true, status: 200 };
+    const sitemapOk = { ok: true, status: 200 };
+
+    // Valid OG + valid JSON-LD => both pass
+    const validChecks = runSeoChecks(
+      { html: CLEAN_HTML, headers: new Headers() },
+      robotsOk,
+      sitemapOk
+    );
+    assert.equal(validChecks.length, 7);
+    assert.equal(validChecks.find((c) => c.id === "open_graph").status, "pass");
+    assert.equal(validChecks.find((c) => c.id === "json_ld").status, "pass");
+
+    // Partial OG (missing og:description) + malformed JSON-LD => both warn
+    const badJsonLdHtml = `<!doctype html>
+    <html lang="en"><head>
+      <meta name="viewport" content="width=device-width, initial-scale=1">
+      <title>Valid Title For Testing SEO Checks Here</title>
+      <meta name="description" content="A sufficiently long meta description for testing purposes so that it passes the seventy to one hundred sixty five character requirement.">
+      <link rel="canonical" href="https://example.com/">
+      <meta property="og:title" content="Only Title">
+      <script type="application/ld+json">{ invalid json: [ }</script>
+    </head><body><h1>Hello</h1></body></html>`;
+
+    const badChecks = runSeoChecks(
+      { html: badJsonLdHtml, headers: new Headers() },
+      robotsOk,
+      sitemapOk
+    );
+    assert.equal(badChecks.find((c) => c.id === "open_graph").status, "warn");
+    assert.equal(badChecks.find((c) => c.id === "json_ld").status, "warn");
+    assert.match(badChecks.find((c) => c.id === "json_ld").detail, /invalid/i);
   });
 });
 
@@ -225,7 +320,7 @@ describe("Integration tests with local mock HTTP servers", () => {
   let redirectServer;
 
   before(async () => {
-    // 1. Clean site (all headers, gzipped, valid SEO, robots, sitemap, security.txt)
+    // 1. Clean site (all headers, gzipped, valid SEO, robots, sitemap, clean Server header)
     cleanServer = await startMockServer((req, res) => {
       if (req.url === "/robots.txt") {
         res.writeHead(200, { "Content-Type": "text/plain" });
@@ -235,12 +330,9 @@ describe("Integration tests with local mock HTTP servers", () => {
         res.writeHead(200, { "Content-Type": "application/xml" });
         return res.end('<?xml version="1.0"?><urlset></urlset>');
       }
-      if (req.url === "/.well-known/security.txt") {
-        res.writeHead(200, { "Content-Type": "text/plain" });
-        return res.end("Contact: mailto:security@example.com\n");
-      }
       const gz = zlib.gzipSync(Buffer.from(CLEAN_HTML, "utf8"));
       res.writeHead(200, {
+        Server: "nginx",
         "Content-Type": "text/html; charset=utf-8",
         "Content-Encoding": "gzip",
         "Cache-Control": "public, max-age=300",
@@ -254,24 +346,30 @@ describe("Integration tests with local mock HTTP servers", () => {
       return res.end(gz);
     });
 
-    // 2. Missing security headers
+    // 2. Missing security headers + leaky Server / X-Powered-By headers
     insecureServer = await startMockServer((req, res) => {
-      if (req.url === "/robots.txt" || req.url === "/sitemap.xml" || req.url === "/.well-known/security.txt") {
+      if (req.url === "/robots.txt" || req.url === "/sitemap.xml") {
         res.writeHead(404);
         return res.end("Not found");
       }
-      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+      res.writeHead(200, {
+        Server: "nginx/1.24.0",
+        "X-Powered-By": "Express",
+        "Content-Type": "text/html; charset=utf-8",
+      });
       return res.end(CLEAN_HTML);
     });
 
-    // 3. Noindex SEO failure + missing title/h1
+    // 3. Noindex SEO failure + missing title/h1/OG/JSON-LD
     noindexServer = await startMockServer((req, res) => {
       if (req.url !== "/") {
         res.writeHead(404);
         return res.end("Not found");
       }
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-      return res.end(`<!doctype html><html><head><meta name="robots" content="noindex, nofollow"></head><body><p>No H1, no title, no viewport</p></body></html>`);
+      return res.end(
+        `<!doctype html><html><head><meta name="robots" content="noindex, nofollow"></head><body><p>No H1, no title, no viewport</p></body></html>`
+      );
     });
 
     // 4. Redirect chain & redirect loop
@@ -314,7 +412,7 @@ describe("Integration tests with local mock HTTP servers", () => {
     ]);
   });
 
-  it("audits a clean site and matches the exact JSON schema", async () => {
+  it("audits a clean site and matches the exact 20-check JSON schema (6+7+7)", async () => {
     const report = await auditSite(cleanServer.url);
 
     assert.equal(report.ok, true);
@@ -324,28 +422,38 @@ describe("Integration tests with local mock HTTP servers", () => {
     assert.equal(typeof report.duration_ms, "number");
     assert.equal(typeof report.overall_score, "number");
     assert.equal(typeof report.grade, "string");
-    assert.equal(report.checks.length, 18);
+    assert.equal(report.checks.length, 20);
     assert.equal(
       report.counts.pass + report.counts.warn + report.counts.fail,
-      18
+      20
     );
 
-    // Performance & SEO should be 100 on the clean mock server
-    assert.equal(report.categories.performance, 100);
+    const perfChecks = report.checks.filter((c) => c.category === "performance");
+    const secChecks = report.checks.filter((c) => c.category === "security");
+    const seoChecks = report.checks.filter((c) => c.category === "seo");
+    assert.equal(perfChecks.length, 6);
+    assert.equal(secChecks.length, 7);
+    assert.equal(seoChecks.length, 7);
+
+    // SEO should be 100; Performance has 5 pass + 1 warn (plain HTTP http_protocol) => 93
     assert.equal(report.categories.seo, 100);
+    assert.equal(report.categories.performance, 93);
 
     // Security headers pass; only https_tls and hsts fail because mock server is HTTP
     const byId = Object.fromEntries(report.checks.map((c) => [c.id, c]));
+    assert.equal(byId.http_protocol.status, "warn");
     assert.equal(byId.csp.status, "pass");
     assert.equal(byId.xcto.status, "pass");
     assert.equal(byId.framing.status, "pass");
     assert.equal(byId.referrer_permissions.status, "pass");
-    assert.equal(byId.security_txt.status, "pass");
+    assert.equal(byId.server_hygiene.status, "pass");
     assert.equal(byId.https_tls.status, "fail");
     assert.equal(byId.hsts.status, "fail");
+    assert.equal(byId.open_graph.status, "pass");
+    assert.equal(byId.json_ld.status, "pass");
   });
 
-  it("flags missing security headers accurately", async () => {
+  it("flags missing security headers and exposed server versions accurately", async () => {
     const report = await auditSite(insecureServer.url);
     const byId = Object.fromEntries(report.checks.map((c) => [c.id, c]));
 
@@ -353,7 +461,9 @@ describe("Integration tests with local mock HTTP servers", () => {
     assert.equal(byId.xcto.status, "fail");
     assert.equal(byId.framing.status, "fail");
     assert.equal(byId.referrer_permissions.status, "fail");
-    assert.equal(byId.security_txt.status, "warn");
+    assert.equal(byId.server_hygiene.status, "warn");
+    assert.match(byId.server_hygiene.detail, /Express/);
+    assert.match(byId.server_hygiene.detail, /nginx\/1\.24\.0/);
   });
 
   it("flags noindex and missing SEO metadata as failures", async () => {
@@ -365,7 +475,8 @@ describe("Integration tests with local mock HTTP servers", () => {
     assert.equal(byId.meta_description.status, "fail");
     assert.equal(byId.h1_and_lang.status, "fail");
     assert.equal(byId.robots_sitemap.status, "fail");
-    assert.equal(byId.structured_social.status, "warn");
+    assert.equal(byId.open_graph.status, "warn");
+    assert.equal(byId.json_ld.status, "warn");
   });
 
   it("traces 3-hop redirect chains and detects redirect loops without crashing", async () => {
@@ -384,7 +495,7 @@ describe("Integration tests with local mock HTTP servers", () => {
     );
   });
 
-  it("CLI --json outputs valid JSON with no ANSI codes", async () => {
+  it("CLI --json outputs valid JSON with 20 checks and no ANSI codes", async () => {
     const res = await runCli([cleanServer.url, "--json"]);
     assert.equal(res.status, 0);
     assert.equal(res.stderr, "");
@@ -392,8 +503,8 @@ describe("Integration tests with local mock HTTP servers", () => {
 
     const data = JSON.parse(res.stdout);
     assert.equal(data.ok, true);
-    assert.equal(data.checks.length, 18);
-    assert.equal(data.categories.performance, 100);
+    assert.equal(data.checks.length, 20);
+    assert.equal(data.counts.pass + data.counts.warn + data.counts.fail, 20);
     assert.equal(data.categories.seo, 100);
   });
 
@@ -424,7 +535,7 @@ describe("Integration tests with local mock HTTP servers", () => {
 
     const version = await runCli(["--version"]);
     assert.equal(version.status, 0);
-    assert.match(version.stdout.trim(), /^\d+\.\d+\.\d+$/);
+    assert.equal(version.stdout.trim(), "1.1.0");
   });
 
   it("formatter renders clean plain-text output when color is disabled", async () => {
