@@ -1,0 +1,49 @@
+{
+  "name": "@tizuvo/audit",
+  "version": "1.0.0",
+  "description": "Zero-dependency Node.js CLI that audits website Performance & Transport, Security & TLS, and Technical SEO in ~3 seconds.",
+  "type": "module",
+  "main": "./src/audit.mjs",
+  "exports": {
+    ".": "./src/audit.mjs"
+  },
+  "bin": {
+    "tizuvo-audit": "./bin/cli.mjs"
+  },
+  "files": [
+    "bin",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --test test/audit.test.mjs"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "keywords": [
+    "audit",
+    "site-audit",
+    "performance",
+    "security",
+    "tls",
+    "seo",
+    "cli",
+    "zero-dependency",
+    "tizuvo"
+  ],
+  "author": "Tizuvo <hello@tizuvo.com> (https://tizuvo.com)",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tizuvo/site-audit-cli.git"
+  },
+  "homepage": "https://tizuvo.com/audit",
+  "bugs": {
+    "url": "https://github.com/tizuvo/site-audit-cli/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
